@@ -16,6 +16,10 @@ import (
 	"github.com/russellhaering/goxmldsig/etreeutils"
 )
 
+type Transform struct {
+	Algorithm string
+}
+
 type SigningContext struct {
 	Hash crypto.Hash
 
@@ -25,6 +29,7 @@ type SigningContext struct {
 	IdAttribute   string
 	Prefix        string
 	Canonicalizer Canonicalizer
+	Transforms    []Transform
 
 	// KeyStore is mutually exclusive with signer and certs
 	signer crypto.Signer
@@ -188,13 +193,22 @@ func (ctx *SigningContext) constructSignedInfo(el *etree.Element, enveloped bool
 	}
 
 	// /SignedInfo/Reference/Transforms
-	transforms := ctx.createNamespacedElement(reference, TransformsTag)
-	if enveloped {
-		envelopedTransform := ctx.createNamespacedElement(transforms, TransformTag)
+	transformsEl := ctx.createNamespacedElement(reference, TransformsTag)
+
+	// Use explicitly configured Transforms if provided
+	if len(ctx.Transforms) > 0 {
+		for _, t := range ctx.Transforms {
+			transform := ctx.createNamespacedElement(transformsEl, TransformTag)
+			transform.CreateAttr(AlgorithmAttr, t.Algorithm)
+		}
+	} else if enveloped {
+		// Default behavior if not configured
+		envelopedTransform := ctx.createNamespacedElement(transformsEl, TransformTag)
 		envelopedTransform.CreateAttr(AlgorithmAttr, EnvelopedSignatureAltorithmId.String())
+
+		canonicalizationAlgorithm := ctx.createNamespacedElement(transformsEl, TransformTag)
+		canonicalizationAlgorithm.CreateAttr(AlgorithmAttr, string(ctx.Canonicalizer.Algorithm()))
 	}
-	canonicalizationAlgorithm := ctx.createNamespacedElement(transforms, TransformTag)
-	canonicalizationAlgorithm.CreateAttr(AlgorithmAttr, string(ctx.Canonicalizer.Algorithm()))
 
 	// /SignedInfo/Reference/DigestMethod
 	digestMethod := ctx.createNamespacedElement(reference, DigestMethodTag)
